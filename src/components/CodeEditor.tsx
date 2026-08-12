@@ -242,55 +242,76 @@ export default function CodeEditor({
     setActiveTab("preview");
 
     if (language === "javascript") {
-      setTimeout(() => {
-        const capturedLogs: string[] = [];
-        const originalConsoleLog = console.log;
-        const originalConsoleError = console.error;
+  setTimeout(async () => {
+    const capturedLogs: string[] = [];
+    const originalConsoleLog = console.log;
+    const originalConsoleError = console.error;
 
-        // Intercept console.log
-        console.log = (...args) => {
-          capturedLogs.push(args.map(arg => 
+    // Intercept console.log
+    console.log = (...args) => {
+      capturedLogs.push(
+        args
+          .map(arg =>
             typeof arg === "object" ? JSON.stringify(arg) : String(arg)
-          ).join(" "));
-          originalConsoleLog.apply(console, args);
-        };
+          )
+          .join(" ")
+      );
 
-        // Intercept console.error
-        console.error = (...args) => {
-          capturedLogs.push(`[ERROR] ${args.join(" ")}`);
-          originalConsoleError.apply(console, args);
-        };
+      originalConsoleLog.apply(console, args);
+    };
 
-        try {
-          const runner = new Function(editorText);
-          const result = runner();
-          
-          console.log = originalConsoleLog;
-          console.error = originalConsoleError;
+    // Intercept console.error
+    console.error = (...args) => {
+      capturedLogs.push(`[ERROR] ${args.join(" ")}`);
+      originalConsoleError.apply(console, args);
+    };
 
-          const outputs = [
-            `> Execution Started At: ${new Date().toLocaleTimeString()}`,
-            ...capturedLogs,
-            result !== undefined ? `↳ Returned: ${JSON.stringify(result)}` : "↳ Finished with exit status: 0 (No return value)"
-          ];
-          
-          setTerminalOutput(outputs);
-          setTerminalStatus("success");
-          onSendActivityLog(`ran JS script successfully (returned: ${result !== undefined ? "value" : "void"})`);
-        } catch (error: any) {
-          console.log = originalConsoleLog;
-          console.error = originalConsoleError;
+    try {
+      const runner = new Function(`return (async () => {
+${editorText}
+})();`);
 
-          setTerminalOutput([
-            `> Execution Failed: ${new Date().toLocaleTimeString()}`,
-            `[Runtime Exception] ${error.message}`,
-            error.stack ? error.stack.split("\n")[0] : ""
-          ]);
-          setTerminalStatus("error");
-          onSendActivityLog(`script runner crashed: ${error.message}`);
-        }
-      }, 500);
-    } else {
+      const result = await runner();
+
+      console.log = originalConsoleLog;
+      console.error = originalConsoleError;
+
+      const outputs = [
+        `> Execution Started At: ${new Date().toLocaleTimeString()}`,
+        ...capturedLogs,
+        result !== undefined
+          ? `↳ Returned: ${JSON.stringify(result)}`
+          : "↳ Finished with exit status: 0 (No return value)"
+      ];
+
+      setTerminalOutput(outputs);
+      setTerminalStatus("success");
+
+      onSendActivityLog(
+        `ran JS script successfully (returned: ${
+          result !== undefined ? "value" : "void"
+        })`
+      );
+    } catch (error: any) {
+      console.log = originalConsoleLog;
+      console.error = originalConsoleError;
+
+      setTerminalOutput([
+        `> Execution Failed: ${new Date().toLocaleTimeString()}`,
+        `[Runtime Exception] ${error.message}`,
+        error.stack ? error.stack.split("\n")[0] : ""
+      ]);
+
+      setTerminalStatus("error");
+
+      onSendActivityLog(
+        `script runner crashed: ${error.message}`
+      );
+    }
+  }, 500);
+}
+
+ else {
       setTimeout(() => {
         setTerminalStatus("success");
         setTerminalOutput([
