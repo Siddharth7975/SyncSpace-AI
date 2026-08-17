@@ -4,14 +4,14 @@ import * as Y from "yjs";
 import Editor, { Monaco } from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
 import { User, CodeLanguage } from "../types";
-import { 
-  Code, 
-  Terminal, 
-  Play, 
-  RefreshCw, 
-  AlertCircle, 
-  CheckCircle2, 
-  Copy, 
+import {
+  Code,
+  Terminal,
+  Play,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  Copy,
   Layers,
   Sparkles
 } from "lucide-react";
@@ -39,7 +39,7 @@ export default function CodeEditor({
   const monacoRef = useRef<Monaco | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const decorationsRef = useRef<string[]>([]);
-  
+
   const [language, setLanguage] = useState<CodeLanguage>("javascript");
   const [editorText, setEditorText] = useState("");
   const [terminalOutput, setTerminalOutput] = useState<string[]>([
@@ -51,10 +51,14 @@ export default function CodeEditor({
   const [isCopied, setIsCopied] = useState(false);
   const [conflictLogs, setConflictLogs] = useState<{ id: string; msg: string; time: string }[]>([]);
 
+  const [runtimeError, setRuntimeError] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [isAIThinking, setIsAIThinking] = useState(false);
+
   // 1. Keep a state of the text for the preview tabs and sandbox runner
   useEffect(() => {
     const yText = yDoc.getText("codestate");
-    
+
     // Set initial text
     const initialText = yText.toString();
     setEditorText(initialText);
@@ -109,7 +113,7 @@ export default function CodeEditor({
     monaco.editor.setTheme("syncspace-theme");
 
     const yText = yDoc.getText("codestate");
-    
+
     // Bind Yjs shared string directly to Monaco text model
     if (bindingRef.current) {
       bindingRef.current.destroy();
@@ -166,7 +170,7 @@ export default function CodeEditor({
     // Generate dynamic styles in the document head for other users' custom colored cursors
     const styleEl = document.getElementById("remote-cursor-styles") || document.createElement("style");
     styleEl.id = "remote-cursor-styles";
-    
+
     let cssContent = "";
     activeUsers.forEach(user => {
       if (user.id !== currentUserId) {
@@ -208,7 +212,7 @@ export default function CodeEditor({
         }
       `;
     }
-    
+
     styleEl.textContent = cssContent;
     if (!document.getElementById("remote-cursor-styles")) {
       document.head.appendChild(styleEl);
@@ -221,7 +225,7 @@ export default function CodeEditor({
         const cursor = user.cursor!;
         const line = cursor.line || 1;
         const ch = cursor.ch || 0;
-        
+
         return {
           range: new monaco.Range(line, ch + 1, line, ch + 1),
           options: {
@@ -236,82 +240,123 @@ export default function CodeEditor({
   }, [activeUsers, currentUserId]);
 
   // 4. Safe evaluation sandboxed execution or preview
+
+  const askAIForDebugging = async () => {
+    if (!runtimeError) return;
+
+    setIsAIThinking(true);
+    setAiResponse("");
+
+    try {
+      const response = await fetch("http://localhost:5000/api/ai/debug", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: editorText,
+          error: runtimeError,
+          language,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "AI request failed");
+      }
+
+      setAiResponse(data.response);
+    } catch (error: any) {
+      console.error("AI request error:", error);
+      setAiResponse(`AI Error: ${error.message}`);
+    } finally {
+      setIsAIThinking(false);
+    }
+  };
+
+
   const handleRunCode = () => {
     setTerminalStatus("running");
+    setRuntimeError("");
+    setAiResponse("");
     setTerminalOutput(["Compiling files...", "Spawning browser sandboxed runner..."]);
     setActiveTab("preview");
 
     if (language === "javascript") {
-  setTimeout(async () => {
-    const capturedLogs: string[] = [];
-    const originalConsoleLog = console.log;
-    const originalConsoleError = console.error;
+      setTimeout(async () => {
+        const capturedLogs: string[] = [];
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
 
-    // Intercept console.log
-    console.log = (...args) => {
-      capturedLogs.push(
-        args
-          .map(arg =>
-            typeof arg === "object" ? JSON.stringify(arg) : String(arg)
-          )
-          .join(" ")
-      );
+        // Intercept console.log
+        console.log = (...args) => {
+          capturedLogs.push(
+            args
+              .map(arg =>
+                typeof arg === "object" ? JSON.stringify(arg) : String(arg)
+              )
+              .join(" ")
+          );
 
-      originalConsoleLog.apply(console, args);
-    };
+          originalConsoleLog.apply(console, args);
+        };
 
-    // Intercept console.error
-    console.error = (...args) => {
-      capturedLogs.push(`[ERROR] ${args.join(" ")}`);
-      originalConsoleError.apply(console, args);
-    };
+        // Intercept console.error
+        console.error = (...args) => {
+          capturedLogs.push(`[ERROR] ${args.join(" ")}`);
+          originalConsoleError.apply(console, args);
+        };
 
-    try {
-      const runner = new Function(`return (async () => {
+        try {
+          const runner = new Function(`return (async () => {
 ${editorText}
 })();`);
 
-      const result = await runner();
+          const result = await runner();
 
-      console.log = originalConsoleLog;
-      console.error = originalConsoleError;
+          console.log = originalConsoleLog;
+          console.error = originalConsoleError;
 
-      const outputs = [
-        `> Execution Started At: ${new Date().toLocaleTimeString()}`,
-        ...capturedLogs,
-        result !== undefined
-          ? `↳ Returned: ${JSON.stringify(result)}`
-          : "↳ Finished with exit status: 0 (No return value)"
-      ];
+          const outputs = [
+            `> Execution Started At: ${new Date().toLocaleTimeString()}`,
+            ...capturedLogs,
+            result !== undefined
+              ? `↳ Returned: ${JSON.stringify(result)}`
+              : "↳ Finished with exit status: 0 (No return value)"
+          ];
 
-      setTerminalOutput(outputs);
-      setTerminalStatus("success");
+          setTerminalOutput(outputs);
+          setTerminalStatus("success");
 
-      onSendActivityLog(
-        `ran JS script successfully (returned: ${
-          result !== undefined ? "value" : "void"
-        })`
-      );
-    } catch (error: any) {
-      console.log = originalConsoleLog;
-      console.error = originalConsoleError;
+          onSendActivityLog(
+            `ran JS script successfully (returned: ${result !== undefined ? "value" : "void"
+            })`
+          );
+        } catch (error: any) {
+          console.log = originalConsoleLog;
+          console.error = originalConsoleError;
 
-      setTerminalOutput([
-        `> Execution Failed: ${new Date().toLocaleTimeString()}`,
-        `[Runtime Exception] ${error.message}`,
-        error.stack ? error.stack.split("\n")[0] : ""
-      ]);
+          const errorMessage = error?.message || String(error);
 
-      setTerminalStatus("error");
+          setRuntimeError(errorMessage);
 
-      onSendActivityLog(
-        `script runner crashed: ${error.message}`
-      );
+          setTerminalOutput([
+            `> Execution Failed: ${new Date().toLocaleTimeString()}`,
+            `[Runtime Exception] ${errorMessage}`,
+            error.stack ? error.stack.split("\n")[0] : ""
+          ]);
+
+          setTerminalStatus("error");
+
+          onSendActivityLog(
+            `script runner crashed: ${errorMessage}`
+          );
+        }
+      }, 500);
     }
-  }, 500);
-}
 
- else {
+    else {
       setTimeout(() => {
         setTerminalStatus("success");
         setTerminalOutput([
@@ -360,22 +405,20 @@ ${editorText}
             <button
               type="button"
               onClick={() => setActiveTab("code")}
-              className={`px-3 py-1 text-xs font-medium rounded transition-all cursor-pointer ${
-                activeTab === "code"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all cursor-pointer ${activeTab === "code"
+                ? "bg-slate-800 text-white shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+                }`}
             >
               Editor
             </button>
             <button
               type="button"
               onClick={() => setActiveTab("preview")}
-              className={`px-3 py-1 text-xs font-medium rounded transition-all cursor-pointer ${
-                activeTab === "preview"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all cursor-pointer ${activeTab === "preview"
+                ? "bg-slate-800 text-white shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+                }`}
             >
               Preview & Logs
             </button>
@@ -391,6 +434,18 @@ ${editorText}
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Run Code</span>
           </button>
+
+          {runtimeError && (
+            <button
+              type="button"
+              onClick={askAIForDebugging}
+              disabled={isAIThinking}
+              className="flex items-center gap-1.5 py-1.5 px-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800/50 text-white rounded-lg text-xs font-medium shadow-md shadow-indigo-950/20 active:scale-95 transition-all cursor-pointer shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{isAIThinking ? "AI Thinking..." : "Explain Error"}</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -461,8 +516,8 @@ ${editorText}
                     title="Code Preview Sandbox"
                     className="w-full flex-1 border-none bg-white"
                     srcDoc={
-                      language === "html" 
-                        ? editorText 
+                      language === "html"
+                        ? editorText
                         : `<html><head><style>${editorText}</style></head><body><div style="font-family: sans-serif; text-align: center; margin-top: 50px;"><h2>Custom Styled Preview</h2><p>Your collaborative CSS styles are active! Write HTML document to test elements.</p></div></body></html>`
                     }
                     sandbox="allow-scripts"
@@ -494,6 +549,24 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                 <div className="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between select-none">
                   <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold font-sans">
                     <Terminal className="w-4 h-4 text-emerald-400" />
+
+
+                    {aiResponse && (
+                      <div className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Sparkles className="w-4 h-4 text-indigo-400" />
+                          <span className="text-sm font-semibold text-indigo-300">
+                            AI Code Assistant
+                          </span>
+                        </div>
+
+                        <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+                          {aiResponse}
+                        </div>
+                      </div>
+                    )}
+
+
                     <span>Console Terminal Output</span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -513,7 +586,7 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                     else if (log.startsWith("↳ Returned")) color = "text-emerald-400 font-semibold";
                     else if (log.startsWith("↳")) color = "text-amber-400";
                     else if (log.startsWith("[Server]")) color = "text-blue-400";
-                    
+
                     return (
                       <p key={index} className={`${color} leading-relaxed break-all`}>
                         {log}
