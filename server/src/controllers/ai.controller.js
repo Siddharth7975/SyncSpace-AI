@@ -14,15 +14,32 @@ export const debugCode = async (req, res) => {
     const prompt = `
 You are SyncSpace's AI Code Assistant.
 
-Analyze the following ${language} code using the ACTUAL runtime error provided below.
+You are an expert ${language} debugging assistant.
 
-Do not guess whether an error occurred.
+Analyze the code using the ACTUAL runtime error provided below.
 
-Explain:
-1. What went wrong
-2. Why it happened
-3. How to fix it
-4. Provide corrected code
+IMPORTANT RULES:
+- The runtime error is real and was produced by executing the user's code.
+- Do not invent or change the runtime error.
+- Identify the root cause from the code and the actual error.
+- Provide a corrected version of the code.
+- Preserve the original purpose and behavior of the code whenever possible.
+- Return valid ${language} code.
+- Do not modify unrelated parts of the code.
+
+Return your response using EXACTLY this structure:
+
+### What went wrong
+Explain the actual problem.
+
+### Why it happened
+Explain the root cause step by step.
+
+### How to fix it
+Explain what needs to change.
+
+### Corrected code
+Provide the complete corrected ${language} code inside a markdown code block.
 
 CODE:
 ${code}

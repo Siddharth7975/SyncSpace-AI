@@ -54,6 +54,10 @@ export default function CodeEditor({
   const [runtimeError, setRuntimeError] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [isAIThinking, setIsAIThinking] = useState(false);
+  const [outputTab, setOutputTab] = useState<"terminal" | "ai">("terminal");
+
+  const [outputHeight, setOutputHeight] = useState(280);
+  const [isResizingOutput, setIsResizingOutput] = useState(false);
 
   // 1. Keep a state of the text for the preview tabs and sandbox runner
   useEffect(() => {
@@ -246,6 +250,7 @@ export default function CodeEditor({
 
     setIsAIThinking(true);
     setAiResponse("");
+    setOutputTab("ai");
 
     try {
       const response = await fetch("http://localhost:5000/api/ai/debug", {
@@ -276,12 +281,40 @@ export default function CodeEditor({
   };
 
 
+  useEffect(() => {
+    if (!isResizingOutput) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const newHeight = window.innerHeight - event.clientY;
+
+      const minHeight = 180;
+      const maxHeight = window.innerHeight * 0.65;
+
+      setOutputHeight(
+        Math.min(Math.max(newHeight, minHeight), maxHeight)
+      );
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingOutput(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingOutput]);
+
   const handleRunCode = () => {
     setTerminalStatus("running");
     setRuntimeError("");
     setAiResponse("");
     setTerminalOutput(["Compiling files...", "Spawning browser sandboxed runner..."]);
     setActiveTab("preview");
+    setOutputTab("terminal");
 
     if (language === "javascript") {
       setTimeout(async () => {
@@ -544,56 +577,172 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                 </div>
               )}
 
-              {/* Console logs output */}
-              <div className="h-44 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden">
-                <div className="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between select-none">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold font-sans">
-                    <Terminal className="w-4 h-4 text-emerald-400" />
+              {/* Output Panel */}
+              {/* Draggable Divider */}
+              <div
+                onMouseDown={() => setIsResizingOutput(true)}
+                className={`group h-2 shrink-0 cursor-row-resize flex items-center justify-center transition-colors ${isResizingOutput
+                    ? "bg-indigo-500/20"
+                    : "bg-transparent hover:bg-slate-800"
+                  }`}
+              >
+                <div
+                  className={`w-16 h-1 rounded-full transition-colors ${isResizingOutput
+                      ? "bg-indigo-400"
+                      : "bg-slate-700 group-hover:bg-indigo-400"
+                    }`}
+                />
+              </div>
 
+              {/* Output Panel */}
+              <div
+                className="bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden shrink-0"
+                style={{ height: `${outputHeight}px` }}
+              >
+                {/* Output Tabs */}
+                <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between">
 
-                    {aiResponse && (
-                      <div className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Sparkles className="w-4 h-4 text-indigo-400" />
-                          <span className="text-sm font-semibold text-indigo-300">
-                            AI Code Assistant
-                          </span>
+                  <div className="flex items-center gap-1">
+
+                    {/* Terminal Tab */}
+                    <button
+                      type="button"
+                      onClick={() => setOutputTab("terminal")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${outputTab === "terminal"
+                          ? "bg-slate-800 text-white"
+                          : "text-slate-400 hover:text-slate-200"
+                        }`}
+                    >
+                      <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                      Terminal
+                    </button>
+
+                    {/* AI Tab */}
+                    <button
+                      type="button"
+                      onClick={() => setOutputTab("ai")}
+                      disabled={!aiResponse && !isAIThinking}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${outputTab === "ai"
+                          ? "bg-indigo-600/20 text-indigo-300"
+                          : "text-slate-400 hover:text-slate-200"
+                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      AI Assistant
+                    </button>
+
+                  </div>
+
+                  {/* Terminal Status */}
+                  {outputTab === "terminal" && (
+                    <div className="flex items-center gap-1.5">
+
+                      {terminalStatus === "running" && (
+                        <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                      )}
+
+                      {terminalStatus === "success" && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      )}
+
+                      {terminalStatus === "error" && (
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                      )}
+
+                      <span className="text-[10px] uppercase font-bold text-slate-500">
+                        {terminalStatus}
+                      </span>
+
+                    </div>
+                  )}
+
+                </div>
+
+                {/* Output Content */}
+                <div className="flex-1 min-h-0 overflow-y-auto bg-slate-950">
+
+                  {/* TERMINAL */}
+                  {outputTab === "terminal" && (
+                    <div className="h-full p-4 font-mono text-xs space-y-1.5 text-slate-300 select-text scrollbar-thin scrollbar-thumb-slate-800">
+
+                      {terminalOutput.map((log, index) => {
+
+                        let color = "text-slate-300";
+
+                        if (log.startsWith(">")) {
+                          color = "text-indigo-400 font-semibold";
+                        }
+                        else if (
+                          log.startsWith("[ERROR]") ||
+                          log.startsWith("[Runtime")
+                        ) {
+                          color = "text-rose-400 font-semibold";
+                        }
+                        else if (log.startsWith("↳ Returned")) {
+                          color = "text-emerald-400 font-semibold";
+                        }
+                        else if (log.startsWith("↳")) {
+                          color = "text-amber-400";
+                        }
+                        else if (log.startsWith("[Server]")) {
+                          color = "text-blue-400";
+                        }
+
+                        return (
+                          <p
+                            key={index}
+                            className={`${color} leading-relaxed break-all`}
+                          >
+                            {log}
+                          </p>
+                        );
+
+                      })}
+
+                    </div>
+                  )}
+
+                  {/* AI ASSISTANT */}
+                  {outputTab === "ai" && (
+                    <div className="h-full p-4 overflow-y-auto">
+
+                      {isAIThinking ? (
+                        <div className="flex items-center gap-3 text-indigo-300 text-sm">
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>AI is analyzing your error...</span>
                         </div>
 
-                        <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
-                          {aiResponse}
+                      ) : aiResponse ? (
+
+                        <div className="min-h-full rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-5">
+
+                          <div className="flex items-center gap-2 mb-4">
+                            <Sparkles className="w-4 h-4 text-indigo-400" />
+
+                            <span className="text-sm font-semibold text-indigo-300">
+                              AI Code Assistant
+                            </span>
+                          </div>
+
+                          <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            {aiResponse}
+                          </div>
+
                         </div>
-                      </div>
-                    )}
 
+                      ) : (
 
-                    <span>Console Terminal Output</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {terminalStatus === "running" && <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />}
-                    {terminalStatus === "success" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-                    {terminalStatus === "error" && <AlertCircle className="w-3.5 h-3.5 text-rose-400" />}
-                    <span className="text-[10px] uppercase font-bold text-slate-500">
-                      {terminalStatus}
-                    </span>
-                  </div>
+                        <div className="h-full flex items-center justify-center text-slate-500 text-sm">
+                          Click "Explain Error" to analyze the runtime error.
+                        </div>
+
+                      )}
+
+                    </div>
+                  )}
+
                 </div>
-                <div className="flex-1 bg-slate-950 p-3 font-mono text-xs overflow-y-auto space-y-1.5 text-slate-300 select-text scrollbar-thin scrollbar-thumb-slate-800">
-                  {terminalOutput.map((log, index) => {
-                    let color = "text-slate-300";
-                    if (log.startsWith(">")) color = "text-indigo-400 font-semibold";
-                    else if (log.startsWith("[ERROR]") || log.startsWith("[Runtime")) color = "text-rose-400 font-semibold";
-                    else if (log.startsWith("↳ Returned")) color = "text-emerald-400 font-semibold";
-                    else if (log.startsWith("↳")) color = "text-amber-400";
-                    else if (log.startsWith("[Server]")) color = "text-blue-400";
 
-                    return (
-                      <p key={index} className={`${color} leading-relaxed break-all`}>
-                        {log}
-                      </p>
-                    );
-                  })}
-                </div>
               </div>
             </motion.div>
           )}
