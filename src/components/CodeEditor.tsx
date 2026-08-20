@@ -56,6 +56,10 @@ export default function CodeEditor({
   const [isAIThinking, setIsAIThinking] = useState(false);
   const [outputTab, setOutputTab] = useState<"terminal" | "ai">("terminal");
 
+  const [aiExplanation, setAiExplanation] = useState("");
+  const [correctedCode, setCorrectedCode] = useState("");
+  const [isCorrectedCodeCopied, setIsCorrectedCodeCopied] = useState(false);
+
   const [outputHeight, setOutputHeight] = useState(280);
   const [isResizingOutput, setIsResizingOutput] = useState(false);
 
@@ -245,11 +249,32 @@ export default function CodeEditor({
 
   // 4. Safe evaluation sandboxed execution or preview
 
+
+  const parseAIResponse = (response: string) => {
+    const correctedCodeMatch = response.match(
+      /### Corrected code\s*```(?:javascript|js|typescript|ts)?\s*([\s\S]*?)```/i
+    );
+
+    const corrected = correctedCodeMatch
+      ? correctedCodeMatch[1].trim()
+      : "";
+
+    const explanation = response
+      .replace(/### Corrected code[\s\S]*$/i, "")
+      .replace(/### (What went wrong|Why it happened|How to fix it)/gi, "\n$1\n")
+      .trim();
+
+    setAiExplanation(explanation);
+    setCorrectedCode(corrected);
+  };
+
   const askAIForDebugging = async () => {
     if (!runtimeError) return;
 
     setIsAIThinking(true);
     setAiResponse("");
+    setAiExplanation("");
+    setCorrectedCode("");
     setOutputTab("ai");
 
     try {
@@ -272,6 +297,8 @@ export default function CodeEditor({
       }
 
       setAiResponse(data.response);
+      parseAIResponse(data.response);
+
     } catch (error: any) {
       console.error("AI request error:", error);
       setAiResponse(`AI Error: ${error.message}`);
@@ -408,6 +435,37 @@ ${editorText}
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
+
+  // Copy corrected AI code
+  const handleCopyCorrectedCode = async () => {
+    if (!correctedCode) return;
+
+    await navigator.clipboard.writeText(correctedCode);
+
+    setIsCorrectedCodeCopied(true);
+
+    setTimeout(() => {
+      setIsCorrectedCodeCopied(false);
+    }, 2000);
+  };
+
+  const handleApplyFix = () => {
+    if (!correctedCode) return;
+
+    const yText = yDoc.getText("codestate");
+
+    yDoc.transact(() => {
+      yText.delete(0, yText.length);
+      yText.insert(0, correctedCode);
+    });
+
+    setEditorText(correctedCode);
+    setOutputTab("terminal");
+    setActiveTab("code");
+
+    onSendActivityLog("applied AI-generated code correction");
+  };
+
 
   return (
     <div className="flex flex-col h-full bg-slate-950/80 backdrop-blur-sm overflow-hidden text-slate-300 border-l border-slate-800/60 shadow-2xl" id="code-editor-container">
@@ -582,14 +640,14 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
               <div
                 onMouseDown={() => setIsResizingOutput(true)}
                 className={`group h-2 shrink-0 cursor-row-resize flex items-center justify-center transition-colors ${isResizingOutput
-                    ? "bg-indigo-500/20"
-                    : "bg-transparent hover:bg-slate-800"
+                  ? "bg-indigo-500/20"
+                  : "bg-transparent hover:bg-slate-800"
                   }`}
               >
                 <div
                   className={`w-16 h-1 rounded-full transition-colors ${isResizingOutput
-                      ? "bg-indigo-400"
-                      : "bg-slate-700 group-hover:bg-indigo-400"
+                    ? "bg-indigo-400"
+                    : "bg-slate-700 group-hover:bg-indigo-400"
                     }`}
                 />
               </div>
@@ -609,8 +667,8 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                       type="button"
                       onClick={() => setOutputTab("terminal")}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${outputTab === "terminal"
-                          ? "bg-slate-800 text-white"
-                          : "text-slate-400 hover:text-slate-200"
+                        ? "bg-slate-800 text-white"
+                        : "text-slate-400 hover:text-slate-200"
                         }`}
                     >
                       <Terminal className="w-3.5 h-3.5 text-emerald-400" />
@@ -623,8 +681,8 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                       onClick={() => setOutputTab("ai")}
                       disabled={!aiResponse && !isAIThinking}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${outputTab === "ai"
-                          ? "bg-indigo-600/20 text-indigo-300"
-                          : "text-slate-400 hover:text-slate-200"
+                        ? "bg-indigo-600/20 text-indigo-300"
+                        : "text-slate-400 hover:text-slate-200"
                         } disabled:opacity-40 disabled:cursor-not-allowed`}
                     >
                       <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
@@ -703,20 +761,25 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                   )}
 
                   {/* AI ASSISTANT */}
+                  {/* AI ASSISTANT */}
                   {outputTab === "ai" && (
                     <div className="h-full p-4 overflow-y-auto">
 
                       {isAIThinking ? (
-                        <div className="flex items-center gap-3 text-indigo-300 text-sm">
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>AI is analyzing your error...</span>
+
+                        <div className="h-full flex items-center justify-center">
+                          <div className="flex items-center gap-3 text-indigo-300 text-sm">
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>AI is analyzing your error...</span>
+                          </div>
                         </div>
 
                       ) : aiResponse ? (
 
-                        <div className="min-h-full rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-5">
+                        <div className="space-y-4">
 
-                          <div className="flex items-center gap-2 mb-4">
+                          {/* AI Header */}
+                          <div className="flex items-center gap-2">
                             <Sparkles className="w-4 h-4 text-indigo-400" />
 
                             <span className="text-sm font-semibold text-indigo-300">
@@ -724,9 +787,72 @@ ${editorText.split("\n").length > 5 ? "... // code truncated" : ""}
                             </span>
                           </div>
 
-                          <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
-                            {aiResponse}
+                          {/* Explanation */}
+                          <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
+
+                            <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
+                              {aiExplanation}
+                            </div>
+
                           </div>
+
+                          {/* Corrected Code */}
+                          {correctedCode && (
+                            <div className="rounded-lg border border-emerald-500/30 bg-slate-950 overflow-hidden">
+
+                              {/* Code Header */}
+                              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900">
+
+                                <div className="flex items-center gap-2">
+                                  <Code className="w-3.5 h-3.5 text-emerald-400" />
+
+                                  <span className="text-xs font-semibold text-slate-300">
+                                    Corrected Code
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+
+                                  {/* Copy */}
+                                  <button
+                                    type="button"
+                                    onClick={handleCopyCorrectedCode}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+                                  >
+                                    {isCorrectedCodeCopied ? (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                        Copied
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        Copy
+                                      </>
+                                    )}
+                                  </button>
+
+                                  {/* Apply Fix */}
+                                  <button
+                                    type="button"
+                                    onClick={handleApplyFix}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Apply Fix
+                                  </button>
+
+                                </div>
+
+                              </div>
+
+                              {/* Code */}
+                              <pre className="p-4 overflow-x-auto text-xs font-mono text-emerald-300 leading-relaxed">
+                                <code>{correctedCode}</code>
+                              </pre>
+
+                            </div>
+                          )}
 
                         </div>
 
