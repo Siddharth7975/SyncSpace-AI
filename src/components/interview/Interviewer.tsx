@@ -1,4 +1,5 @@
-import { useState } from "react";
+import ProblemLibrary from "./ProblemLibrary";
+import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Copy,
@@ -6,7 +7,8 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { createInterview } from "../../services/interviewService";
+import { createInterview, selectInterviewProblem } from "../../services/interviewService";
+import { socket } from "../../services/socketService";
 
 interface InterviewerProps {
   token: string;
@@ -18,10 +20,56 @@ export default function Interviewer({
   onBack,
 }: InterviewerProps) {
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [interviewId, setInterviewId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [candidateConnected, setCandidateConnected] = useState(false);
+  const [candidateName, setCandidateName] = useState("");
+  const [showProblemLibrary, setShowProblemLibrary] = useState(false);
+  const [selectedProblem, setSelectedProblem] = useState<any>(null);
 
+
+  // Listen for interview socket events
+  useEffect(() => {
+    const handleCandidateJoined = (data: {
+      candidateName: string;
+    }) => {
+      setCandidateConnected(true);
+      setCandidateName(data.candidateName);
+    };
+
+    const handleInterviewError = (data: {
+      message: string;
+    }) => {
+      console.error("INTERVIEW ERROR FROM SERVER:", data.message);
+      setError(data.message);
+    };
+
+    socket.on(
+      "INTERVIEW_CANDIDATE_JOINED",
+      handleCandidateJoined
+    );
+
+    socket.on(
+      "INTERVIEW_ERROR",
+      handleInterviewError
+    );
+
+    return () => {
+      socket.off(
+        "INTERVIEW_CANDIDATE_JOINED",
+        handleCandidateJoined
+      );
+
+      socket.off(
+        "INTERVIEW_ERROR",
+        handleInterviewError
+      );
+    };
+  }, []);
+
+  // Create interview
   const handleCreateInterview = async () => {
     setLoading(true);
     setError("");
@@ -30,19 +78,55 @@ export default function Interviewer({
       const data = await createInterview(token);
 
       if (!data.success) {
-        setError(data.message || "Failed to create interview.");
+        setError(
+          data.message || "Failed to create interview."
+        );
         return;
       }
+      const interviewCode = data.interview.roomCode;
+      const createdInterviewId = data.interview.id;
 
-      setRoomCode(data.interview.roomCode);
+      setRoomCode(interviewCode);
+      setInterviewId(createdInterviewId);
+
+      const user = JSON.parse(
+        localStorage.getItem("syncspace_user") || "{}"
+      );
+
+
+      const joinInterviewRoom = () => {
+        socket.emit("INTERVIEW_JOIN_INTERVIEWER", {
+          roomCode: interviewCode,
+          userId: user._id || user.id,
+          username: user.name,
+        });
+
+
+      };
+
+      // If already connected, emit immediately.
+      if (socket.connected) {
+        joinInterviewRoom();
+      } else {
+        // Otherwise wait until Socket.IO connects.
+        socket.once("connect", joinInterviewRoom);
+        socket.connect();
+      }
     } catch (error) {
-      console.error("Create interview error:", error);
-      setError("Unable to connect to the server.");
+      console.error(
+        "Create interview error:",
+        error
+      );
+
+      setError(
+        "Unable to connect to the server."
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  // Copy interview code
   const handleCopyCode = async () => {
     if (!roomCode) return;
 
@@ -54,6 +138,73 @@ export default function Interviewer({
       setCopied(false);
     }, 2000);
   };
+
+  if (showProblemLibrary) {
+    return (
+      <ProblemLibrary
+        token={token}
+        onBack={() => {
+          setShowProblemLibrary(false);
+        }}
+        onSelectProblem={async (problem) => {
+          if (!interviewId) {
+            console.error("Interview ID is missing.");
+            return;
+          }
+
+          try {
+            const result = await selectInterviewProblem(
+              token,
+              interviewId,
+              problem._id
+            );
+
+            console.log(
+              "Select problem response:",
+              result
+            );
+
+            if (!result.success) {
+              console.error(
+                "Failed to select problem:",
+                result.message
+              );
+
+              setError(
+                result.message ||
+                "Failed to select problem."
+              );
+
+              return;
+            }
+
+            setSelectedProblem(problem);
+            setShowProblemLibrary(false);
+
+            socket.emit("INTERVIEW_SELECT_PROBLEM", {
+              roomCode,
+              interviewId,
+              problemId: problem._id,
+            });
+
+            console.log(
+              "Problem selected successfully:",
+              problem.title
+            );
+          } catch (error) {
+            console.error(
+              "Select problem error:",
+              error
+            );
+
+            setError(
+              "Unable to select the problem."
+            );
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -185,17 +336,41 @@ export default function Interviewer({
                   )}
                 </button>
 
-                {/* Waiting */}
+                {/* Select Problem */}
+                <button
+                  type="button"
+                  onClick={() => setShowProblemLibrary(true)}
+                  className="mt-6 w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-5 py-3 font-semibold transition-colors"
+                >
+                  Select DSA Problem
+                </button>
+
+                {/* Candidate Status */}
                 <div className="mt-8 pt-6 border-t border-slate-800">
 
-                  <div className="flex items-center justify-center gap-2 text-slate-300">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    Waiting for candidate
-                  </div>
+                  {candidateConnected ? (
+                    <>
+                      <div className="flex items-center justify-center gap-2 text-emerald-400">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        Candidate Connected
+                      </div>
 
-                  <p className="text-xs text-slate-500 mt-2">
-                    The candidate will appear here after joining.
-                  </p>
+                      <p className="text-sm text-slate-300 mt-2">
+                        {candidateName} has joined the interview.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-center gap-2 text-slate-300">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                        Waiting for candidate
+                      </div>
+
+                      <p className="text-xs text-slate-500 mt-2">
+                        The candidate will appear here after joining.
+                      </p>
+                    </>
+                  )}
 
                 </div>
 

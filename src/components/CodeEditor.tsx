@@ -24,6 +24,8 @@ interface CodeEditorProps {
   userColor: string;
   onSendCursor: (cursor: { line: number; ch: number; element: "editor" }) => void;
   onSendActivityLog: (message: string) => void;
+
+  initialCode?: string;
 }
 
 export default function CodeEditor({
@@ -33,7 +35,8 @@ export default function CodeEditor({
   userName,
   userColor,
   onSendCursor,
-  onSendActivityLog
+  onSendActivityLog,
+  initialCode,
 }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -66,6 +69,10 @@ export default function CodeEditor({
   // 1. Keep a state of the text for the preview tabs and sandbox runner
   useEffect(() => {
     const yText = yDoc.getText("codestate");
+
+    if (yText.length === 0 && initialCode) {
+      yText.insert(0, initialCode);
+    }
 
     // Set initial text
     const initialText = yText.toString();

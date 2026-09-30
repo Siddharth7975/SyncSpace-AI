@@ -1,3 +1,4 @@
+import Candidate from "./components/interview/Candidate";
 import InterviewMode from "./components/interview/InterviewMode";
 import Interviewer from "./components/interview/Interviewer";
 import React, { useState, useEffect, useRef } from "react";
@@ -75,6 +76,7 @@ export default function App() {
   const [showInterviewMode, setShowInterviewMode] = useState(false);
   const [showWorkspaceMode, setShowWorkspaceMode] = useState(false);
   const [showInterviewer, setShowInterviewer] = useState(false);
+  const [showCandidate, setShowCandidate] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -549,27 +551,20 @@ export default function App() {
       );
     }
 
-    // -------------------------
-    // DSA Interview Mode
-    // -------------------------
-    if (showInterviewMode) {
+    // Candidate
+    if (showCandidate) {
       return (
-        <InterviewMode
-          onBack={() => setShowInterviewMode(false)}
-          onInterviewer={() => {
-            setShowInterviewMode(false);
-            setShowInterviewer(true);
-          }}
-          onCandidate={() => {
-            alert("Candidate section coming next.");
+        <Candidate
+          token={token}
+          onBack={() => {
+            setShowCandidate(false);
+            setShowInterviewMode(true);
           }}
         />
       );
     }
 
-    // -------------------------
-    // Workspace Mode
-    // -------------------------
+    // workspace:-
     if (showWorkspaceMode) {
       return (
         <RoomSelector
@@ -585,6 +580,27 @@ export default function App() {
         />
       );
     }
+
+    // -------------------------
+    // DSA Interview Mode
+    // -------------------------
+    if (showInterviewMode) {
+      return (
+        <InterviewMode
+          onBack={() => setShowInterviewMode(false)}
+          onInterviewer={() => {
+            setShowInterviewMode(false);
+            setShowInterviewer(true);
+          }}
+          onCandidate={() => {
+            setShowCandidate(true);
+          }}
+        />
+      );
+    }
+
+
+
 
     // -------------------------
     // MAIN MODE SELECTION
