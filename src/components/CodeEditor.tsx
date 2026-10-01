@@ -26,6 +26,14 @@ interface CodeEditorProps {
   onSendActivityLog: (message: string) => void;
 
   initialCode?: string;
+
+  interviewStarterCode?: {
+    javascript?: string;
+    python?: string;
+    cpp?: string;
+  };
+
+  interviewMode?: boolean;
 }
 
 export default function CodeEditor({
@@ -37,6 +45,8 @@ export default function CodeEditor({
   onSendCursor,
   onSendActivityLog,
   initialCode,
+  interviewStarterCode,
+  interviewMode = false,
 }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -45,6 +55,14 @@ export default function CodeEditor({
 
   const [language, setLanguage] = useState<CodeLanguage>("javascript");
   const [editorText, setEditorText] = useState("");
+
+  const [interviewCode, setInterviewCode] = useState<
+    Record<string, string>
+  >({
+    javascript: interviewStarterCode?.javascript || "",
+    python: interviewStarterCode?.python || "",
+    cpp: interviewStarterCode?.cpp || "",
+  });
   const [terminalOutput, setTerminalOutput] = useState<string[]>([
     "System Console Ready.",
     "Click 'Run Code' to execute JavaScript, or write HTML to see rendering."
@@ -342,6 +360,36 @@ export default function CodeEditor({
     };
   }, [isResizingOutput]);
 
+  const handleLanguageChange = (newLanguage: CodeLanguage) => {
+    if (!interviewMode) {
+      setLanguage(newLanguage);
+      return;
+    }
+
+    const yText = yDoc.getText("codestate");
+
+    // Save current code for the current language
+    setInterviewCode((prev) => ({
+      ...prev,
+      [language]: yText.toString(),
+    }));
+
+    // Get code for the new language
+    const nextCode = interviewCode[newLanguage] || "";
+
+    // Replace shared editor content
+    yDoc.transact(() => {
+      yText.delete(0, yText.length);
+
+      if (nextCode) {
+        yText.insert(0, nextCode);
+      }
+    });
+
+    setEditorText(nextCode);
+    setLanguage(newLanguage);
+  };
+
   const handleRunCode = () => {
     setTerminalStatus("running");
     setRuntimeError("");
@@ -486,13 +534,25 @@ ${editorText}
             <select
               id="language-picker"
               value={language}
-              onChange={(e) => setLanguage(e.target.value as CodeLanguage)}
+              onChange={(e) =>
+                handleLanguageChange(e.target.value as CodeLanguage)
+              }
               className="bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-300 font-medium focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
               <option value="javascript">JavaScript (ES6)</option>
-              <option value="html">HTML5 Document</option>
-              <option value="css">CSS3 Stylesheet</option>
-              <option value="python">Python Mockup</option>
+
+              {interviewMode ? (
+                <>
+                  <option value="python">Python</option>
+                  <option value="cpp">C++</option>
+                </>
+              ) : (
+                <>
+                  <option value="html">HTML5 Document</option>
+                  <option value="css">CSS3 Stylesheet</option>
+                  <option value="python">Python Mockup</option>
+                </>
+              )}
             </select>
           </div>
         </div>

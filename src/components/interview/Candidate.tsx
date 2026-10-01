@@ -457,10 +457,10 @@ export default function Candidate({
                     {/* Difficulty */}
                     <span
                       className={`shrink-0 px-3 py-1 rounded-full border text-xs font-medium capitalize ${selectedProblem.difficulty === "easy"
-                          ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                          : selectedProblem.difficulty === "medium"
-                            ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-                            : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+                        ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                        : selectedProblem.difficulty === "medium"
+                          ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                          : "text-rose-400 bg-rose-500/10 border-rose-500/20"
                         }`}
                     >
                       {selectedProblem.difficulty}
@@ -599,6 +599,12 @@ export default function Candidate({
                     initialCode={
                       selectedProblem.starterCode?.javascript || ""
                     }
+                    interviewStarterCode={{
+                      javascript: selectedProblem.starterCode?.javascript || "",
+                      python: selectedProblem.starterCode?.python || "",
+                      cpp: selectedProblem.starterCode?.cpp || "",
+                    }}
+                    interviewMode={true}
                   />
 
                 </div>
