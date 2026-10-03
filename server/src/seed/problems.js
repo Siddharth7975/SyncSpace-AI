@@ -51,6 +51,15 @@ public:
     pass`,
     },
 
+    execution: {
+      functionName: "twoSum",
+      returnType: "vector<int>",
+      parameters: [
+        { name: "nums", type: "vector<int>" },
+        { name: "target", type: "int" },
+      ],
+    },
+
     testCases: [
       {
         input: "nums = [2,7,11,15], target = 9",
@@ -107,6 +116,14 @@ public:
 
       python: `def isValid(s):
     pass`,
+    },
+
+    execution: {
+      functionName: "isValid",
+      returnType: "bool",
+      parameters: [
+        { name: "s", type: "string" },
+      ],
     },
 
     testCases: [
@@ -168,6 +185,15 @@ public:
     pass`,
     },
 
+    execution: {
+      functionName: "search",
+      returnType: "int",
+      parameters: [
+        { name: "nums", type: "vector<int>" },
+        { name: "target", type: "int" },
+      ],
+    },
+
     testCases: [
       {
         input: "nums = [-1,0,3,5,9,12], target = 9",
@@ -222,6 +248,14 @@ public:
     pass`,
     },
 
+    execution: {
+      functionName: "reverseList",
+      returnType: "ListNode*",
+      parameters: [
+        { name: "head", type: "ListNode*" },
+      ],
+    },
+
     testCases: [
       {
         input: "head = [1,2,3,4,5]",
@@ -274,6 +308,14 @@ public:
 
       python: `def maxDepth(root):
     pass`,
+    },
+
+    execution: {
+      functionName: "maxDepth",
+      returnType: "int",
+      parameters: [
+        { name: "root", type: "TreeNode*" },
+      ],
     },
 
     testCases: [

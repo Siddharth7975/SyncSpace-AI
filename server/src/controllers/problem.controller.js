@@ -1,4 +1,11 @@
 import Problem from "../../models/Problem.js";
+import { generateCppProgram } from "../utils/cppDriver.js";
+import { runCppCode } from "../utils/cppRunner.js";
+
+
+// ============================================================
+// GET ALL PROBLEMS
+// ============================================================
 
 export const getProblems = async (req, res) => {
   try {
@@ -6,7 +13,7 @@ export const getProblems = async (req, res) => {
       isActive: true,
     })
       .select(
-        "title description difficulty topics examples constraints starterCode"
+        "title description difficulty topics examples constraints starterCode execution testCases"
       )
       .sort({ createdAt: -1 });
 
@@ -16,7 +23,10 @@ export const getProblems = async (req, res) => {
       problems,
     });
   } catch (error) {
-    console.error("Get problems error:", error);
+    console.error(
+      "Get problems error:",
+      error
+    );
 
     res.status(500).json({
       success: false,
@@ -25,11 +35,10 @@ export const getProblems = async (req, res) => {
   }
 };
 
-/*
-=========================================================
-RUN DSA CODE
-=========================================================
-*/
+
+// ============================================================
+// RUN DSA CODE
+// ============================================================
 
 export const runDSACode = async (req, res) => {
   try {
@@ -39,9 +48,10 @@ export const runDSACode = async (req, res) => {
       code,
     } = req.body;
 
-    // ---------------------------------------------
+
+    // --------------------------------------------------------
     // Validate request
-    // ---------------------------------------------
+    // --------------------------------------------------------
 
     if (!problemId) {
       return res.status(400).json({
@@ -64,28 +74,28 @@ export const runDSACode = async (req, res) => {
       });
     }
 
-    const allowedLanguages = [
-      "javascript",
-      "python",
-      "cpp",
-    ];
 
-    if (!allowedLanguages.includes(language)) {
+    // --------------------------------------------------------
+    // Only C++ for now
+    // --------------------------------------------------------
+
+    if (language !== "cpp") {
       return res.status(400).json({
         success: false,
-        message: "Unsupported programming language.",
+        message: "Only C++ execution is supported.",
       });
     }
 
-    // ---------------------------------------------
+
+    // --------------------------------------------------------
     // Find problem
-    // ---------------------------------------------
+    // --------------------------------------------------------
 
     const problem = await Problem.findOne({
       _id: problemId,
       isActive: true,
     }).select(
-      "title testCases"
+      "title execution testCases"
     );
 
     if (!problem) {
@@ -95,29 +105,209 @@ export const runDSACode = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // Temporary response
-    //
-    // Execution engine will be added next.
-    // ---------------------------------------------
+
+    // --------------------------------------------------------
+    // Check execution metadata
+    // --------------------------------------------------------
+
+    if (!problem.execution) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "Execution configuration is missing for this problem.",
+      });
+    }
+
+
+    // --------------------------------------------------------
+    // Check test cases
+    // --------------------------------------------------------
+
+    if (
+      !problem.testCases ||
+      problem.testCases.length === 0
+    ) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "No test cases configured for this problem.",
+      });
+    }
+
+
+    // --------------------------------------------------------
+    // Generate complete C++ program
+    // --------------------------------------------------------
+
+    const completeCode =
+      generateCppProgram(
+        problem,
+        code
+      );
+
+
+    // --------------------------------------------------------
+    // Compile + execute
+    // --------------------------------------------------------
+
+    const executionResult =
+      await runCppCode(
+        completeCode
+      );
+
+
+    // --------------------------------------------------------
+    // Compilation / runtime error
+    // --------------------------------------------------------
+
+    if (!executionResult.success) {
+      return res.status(200).json({
+        success: true,
+
+        result: "failed",
+
+        problem: {
+          id: problem._id,
+          title: problem.title,
+        },
+
+        error: {
+          stage: executionResult.stage,
+          message: executionResult.error,
+        },
+
+        testCases: {
+          total: problem.testCases.length,
+          passed: 0,
+        },
+
+        results: [],
+      });
+    }
+
+
+    // --------------------------------------------------------
+    // Get actual outputs
+    // --------------------------------------------------------
+
+    const actualOutputs =
+      executionResult.output
+        .split("__TEST_END__")
+        .filter(
+          (output) =>
+            output.trim() !== ""
+        );
+
+
+    // --------------------------------------------------------
+    // Compare every test case
+    // --------------------------------------------------------
+
+    const results =
+      problem.testCases.map(
+        (testCase, index) => {
+
+          const actualOutput =
+            actualOutputs[index]
+              ? actualOutputs[index].trim()
+              : "";
+
+          const expectedOutput =
+            testCase.expectedOutput.trim();
+
+
+          // Remove unnecessary whitespace
+          // so [0, 1] and [0,1] are treated
+          // as the same output.
+
+          const normalizeOutput =
+            (value) =>
+              value
+                .trim()
+                .replace(/\s+/g, "");
+
+
+          const passed =
+            normalizeOutput(
+              actualOutput
+            ) ===
+            normalizeOutput(
+              expectedOutput
+            );
+
+
+          return {
+            testCase: index + 1,
+
+            input:
+              testCase.input,
+
+            expectedOutput,
+
+            actualOutput,
+
+            passed,
+
+            stage: "runtime",
+          };
+        }
+      );
+
+
+    // --------------------------------------------------------
+    // Calculate result
+    // --------------------------------------------------------
+
+    const passedCount =
+      results.filter(
+        (result) =>
+          result.passed
+      ).length;
+
+    const totalTests =
+      problem.testCases.length;
+
+    const allPassed =
+      passedCount === totalTests;
+
+
+    // --------------------------------------------------------
+    // Send final response
+    // --------------------------------------------------------
 
     return res.status(200).json({
       success: true,
-      message: "DSA code received successfully.",
+
+      result: allPassed
+        ? "passed"
+        : "failed",
+
       problem: {
         id: problem._id,
         title: problem.title,
       },
-      language,
-      testCaseCount: problem.testCases.length,
+
+      testCases: {
+        total: totalTests,
+        passed: passedCount,
+      },
+
+      results,
     });
 
   } catch (error) {
-    console.error("Run DSA code error:", error);
+
+    console.error(
+      "Run DSA code error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to process DSA code.",
+      message:
+        "Failed to execute C++ code.",
+      error:
+        error.message,
     });
   }
 };

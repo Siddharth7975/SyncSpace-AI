@@ -68,6 +68,33 @@ const problemSchema = new mongoose.Schema(
       },
     },
 
+    // Information required to execute the C++ solution
+    execution: {
+      functionName: {
+        type: String,
+        required: true,
+      },
+
+      returnType: {
+        type: String,
+        required: true,
+      },
+
+      parameters: [
+        {
+          name: {
+            type: String,
+            required: true,
+          },
+
+          type: {
+            type: String,
+            required: true,
+          },
+        },
+      ],
+    },
+
     solution: {
       javascript: {
         type: String,
